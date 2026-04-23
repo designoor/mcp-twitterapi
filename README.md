@@ -1,1 +1,1 @@
-# twitterapi-mcp
+# mcp-twitter
