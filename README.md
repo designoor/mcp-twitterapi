@@ -13,7 +13,7 @@ Build with [create-mcp@kusari-plugin](https://github.com/designoor/kusari-plugin
 
 ## Requirements
 
-- Node.js 20+
+- Node.js 22+
 - A twitterapi.io API key ([get one here](https://twitterapi.io/dashboard))
 
 ## Install
