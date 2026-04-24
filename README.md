@@ -9,7 +9,39 @@ Build with
 ░█▀▄░█░█░▀▀█░█▀█░█▀▄░░█░░░░█▀▀░█░░░█░█░█░█░░█░░█░█░▀▀█
 ░▀░▀░▀▀▀░▀▀▀░▀░▀░▀░▀░▀▀▀░░░▀░░░▀▀▀░▀▀▀░▀▀▀░▀▀▀░▀░▀░▀▀▀
 ```
-[Kusari Plugins](http://github.com)
+Build with [create-mcp@kusari-plugin](https://github.com/designoor/kusari-plugins) skill.
+
+## Requirements
+
+- Node.js 20+
+- A twitterapi.io API key ([get one here](https://twitterapi.io/dashboard))
+
+## Install
+
+No clone required — the package is published on npm.
+
+Add to your Claude Desktop config:
+
+- macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- Windows: `%APPDATA%\Claude\claude_desktop_config.json`
+
+```json
+{
+  "mcpServers": {
+    "twitter": {
+      "command": "npx",
+      "args": ["-y", "@0x50b/mcp-twitterapi"],
+      "env": {
+        "TWITTERAPI_IO_API_KEY": "your-key-here"
+      }
+    }
+  }
+}
+```
+
+For Claude Code, the same block goes into a project-level `.mcp.json` at the repo root, then set `"enableAllProjectMcpServers": true` in `.claude/settings.local.json`.
+
+Restart Claude Desktop fully (⌘Q, not just close the window) to pick up the config.
 
 ## Tools
 
@@ -48,53 +80,6 @@ fetch_tweets({ username: "elonmusk", since: "...", until: "2026-04-15T10:23:00Z"
 ```
 
 Each call paginates internally by **walking the `until` bound backward** — per twitterapi.io's own guidance (their cursor is documented as unreliable). After each API page, the tool narrows `until` to one second before the oldest tweet it just received, queries again, and stops when the API reports no more tweets, when a page yields zero new IDs, or when the caller's `limit` / byte budget is reached. Duplicates are filtered by tweet ID as a safety net for boundary tweets. A pagination safety ceiling of 110 API calls per invocation prevents runaway cost on pathological windows; if it fires, `hasMore` stays `true` and the returned `nextCall` lets you resume from the oldest fetched tweet.
-
-Build with [create-mcp@kusari-plugin](https://github.com/designoor/kusari-plugins) skill.
-
-## Requirements
-
-- Node.js 20+
-- A twitterapi.io API key ([get one here](https://twitterapi.io/dashboard))
-
-## Install
-
-No clone required — the package is published on npm.
-
-Add to your Claude Desktop config:
-
-- macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
-- Windows: `%APPDATA%\Claude\claude_desktop_config.json`
-
-```json
-{
-  "mcpServers": {
-    "twitter": {
-      "command": "npx",
-      "args": ["-y", "@0x50b/mcp-twitterapi"],
-      "env": {
-        "TWITTERAPI_IO_API_KEY": "your-key-here"
-      }
-    }
-  }
-}
-```
-
-For Claude Code, the same block goes into a project-level `.mcp.json` at the repo root, then set `"enableAllProjectMcpServers": true` in `.claude/settings.local.json`.
-
-Restart Claude Desktop fully (⌘Q, not just close the window) to pick up the config.
-
-### Troubleshooting: "command not found"
-
-If Claude Desktop says it can't find `npx`, you're likely using a per-user Node version manager (nvm, asdf, volta, fnm). GUI apps on macOS/Windows don't inherit your shell's `PATH`, so they can't see binaries under `~/.nvm/`, `~/.asdf/`, etc.
-
-Fix: substitute the absolute path of `npx` as the `command`:
-
-| Setup | Command |
-|---|---|
-| macOS / Linux | `which npx` |
-| Windows | `where npx` |
-
-If the output starts with `~`, expand it (Claude Desktop doesn't). System-installed Node (macOS/Windows installers, Homebrew) has `npx` at a default-PATH location, so bare `"command": "npx"` usually just works — this caveat is specifically for version-manager users.
 
 ## Local development (contributors only)
 
