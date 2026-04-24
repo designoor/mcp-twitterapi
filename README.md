@@ -1,4 +1,4 @@
-# mcp-twitter
+# mcp-twitterapi
 
 A local [MCP](https://modelcontextprotocol.io) server that fetches tweets from a specific X (Twitter) user via [twitterapi.io](https://twitterapi.io).
 
