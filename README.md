@@ -4,6 +4,8 @@ A local [MCP](https://modelcontextprotocol.io) server that fetches tweets from a
 
 Exposes a single tool, `fetch_tweets`, that wraps twitterapi.io's advanced search endpoint.
 
+Build with [create-mcp@kusari-plugin](https://github.com/designoor/kusari-plugins) skill.
+
 ## Requirements
 
 - Node.js 20+
