@@ -1,4 +1,4 @@
-# mcp-twitter
+# mcp-twitterapi
 
 A local [MCP](https://modelcontextprotocol.io) server that fetches tweets from a specific X (Twitter) user via [twitterapi.io](https://twitterapi.io).
 
@@ -48,6 +48,8 @@ fetch_tweets({ username: "elonmusk", since: "...", until: "2026-04-15T10:23:00Z"
 ```
 
 Each call paginates internally by **walking the `until` bound backward** — per twitterapi.io's own guidance (their cursor is documented as unreliable). After each API page, the tool narrows `until` to one second before the oldest tweet it just received, queries again, and stops when the API reports no more tweets, when a page yields zero new IDs, or when the caller's `limit` / byte budget is reached. Duplicates are filtered by tweet ID as a safety net for boundary tweets. A pagination safety ceiling of 110 API calls per invocation prevents runaway cost on pathological windows; if it fires, `hasMore` stays `true` and the returned `nextCall` lets you resume from the oldest fetched tweet.
+
+Build with [create-mcp@kusari-plugin](https://github.com/designoor/kusari-plugins) skill.
 
 ## Requirements
 
