@@ -227,3 +227,9 @@ $RECYCLE.BIN/
 *.lnk
 
 # End of https://www.toptal.com/developers/gitignore/api/osx,macos,windows,linux,node
+
+### Claude Code (local-only) ###
+# Local MCP server config — contains machine paths and API keys
+.mcp.json
+# Personal Claude Code overrides — may contain secrets, permissions, env vars
+.claude/settings.local.json

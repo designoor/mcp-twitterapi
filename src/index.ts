@@ -24,8 +24,12 @@ server.registerTool(
     description:
       "Fetch tweets from a specific X (Twitter) user via twitterapi.io advanced search. " +
       "Combines `from:{username}` with optional time bounds, filters, and additional query terms. " +
-      "Returns tweets trimmed to high-signal fields (text, counts, author, quoted/retweeted content). " +
-      "Does NOT post, delete, or modify tweets. Does NOT fetch replies TO a tweet (search only returns tweets FROM the user).",
+      "Returns up to `limit` tweets in reverse-chronological order, trimmed to high-signal fields " +
+      "(text, counts, author, quoted/retweeted content). " +
+      "If more tweets exist in the window, the response sets `hasMore: true` and includes a `nextCall` " +
+      "object with the exact parameters for the follow-up call; `hasMore: false` means the window is " +
+      "fully fetched. Does NOT post, delete, or modify tweets. Does NOT fetch replies TO a tweet " +
+      "(search only returns tweets FROM the user).",
     inputSchema: {
       username: z
         .string()
@@ -42,13 +46,17 @@ server.registerTool(
         .string()
         .optional()
         .describe("Upper time bound. ISO 8601 or relative. Defaults to now when omitted."),
-      max_results: z
+      limit: z
         .number()
         .int()
         .min(1)
-        .max(100)
-        .default(20)
-        .describe("Maximum total tweets returned across pages. Hard cap 100."),
+        .max(2000)
+        .default(200)
+        .describe(
+          "Max tweets returned in this call. Default 200 covers most 'what has @user been posting' questions; " +
+            "raise only when you genuinely need more, since each ~20 tweets costs one API request. " +
+            "If the window contains more than `limit`, the response returns `hasMore: true` plus a `nextCall` object to continue.",
+        ),
       query: z
         .string()
         .optional()
@@ -89,6 +97,9 @@ server.registerTool(
       idempotentHint: true,
       openWorldHint: true,
     },
+    _meta: {
+      "anthropic/maxResultSizeChars": 500000,
+    },
   },
   async (args) => {
     const apiKey = process.env[API_KEY_ENV];
@@ -110,7 +121,7 @@ server.registerTool(
           username: args.username,
           since: args.since,
           until: args.until,
-          maxResults: args.max_results,
+          limit: args.limit,
           query: args.query,
           includeRetweets: args.include_retweets,
           includeQuotes: args.include_quotes,
@@ -123,7 +134,7 @@ server.registerTool(
       );
 
       return {
-        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        content: [{ type: "text", text: JSON.stringify(result) }],
       };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
