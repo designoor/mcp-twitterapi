@@ -1,16 +1,16 @@
 {
-  "name": "mcp-twitter",
+  "name": "@0x50b/mcp-twitterapi",
   "version": "0.1.0",
   "description": "MCP server for fetching tweets from a specific X (Twitter) user via twitterapi.io.",
   "license": "MIT",
   "author": "0x50b <0x50b@proton.me>",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/designoor/mcp-twitter.git"
+    "url": "git+https://github.com/designoor/mcp-twitterapi.git"
   },
-  "homepage": "https://github.com/designoor/mcp-twitter#readme",
+  "homepage": "https://github.com/designoor/mcp-twitterapi#readme",
   "bugs": {
-    "url": "https://github.com/designoor/mcp-twitter/issues"
+    "url": "https://github.com/designoor/mcp-twitterapi/issues"
   },
   "keywords": [
     "mcp",
@@ -25,7 +25,7 @@
   ],
   "type": "module",
   "bin": {
-    "mcp-twitter": "dist/index.js"
+    "mcp-twitterapi": "dist/index.js"
   },
   "files": [
     "dist",

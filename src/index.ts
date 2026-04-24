@@ -7,7 +7,7 @@ import { fetchTweets } from "./api.js";
 const API_KEY_ENV = "TWITTERAPI_IO_API_KEY";
 
 const server = new McpServer(
-  { name: "mcp-twitter", version: "0.1.0" },
+  { name: "mcp-twitterapi", version: "0.1.0" },
   {
     instructions:
       "Use fetch_tweets to retrieve tweets from a specific X (Twitter) user via twitterapi.io. " +
