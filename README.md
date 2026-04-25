@@ -18,7 +18,7 @@ Build with [create-mcp@kusari-plugin](https://github.com/designoor/kusari-plugin
 
 ## Install
 
-No clone required — the package is published on npm.
+The package is on [npm](https://www.npmjs.com/package/@0x50b/mcp-twitterapi) but you don't have to install it. Using npx is perfectly fine.
 
 Add to your Claude Desktop config:
 
@@ -26,6 +26,7 @@ Add to your Claude Desktop config:
 |---|---|
 | macOS | `~/Library/Application Support/Claude/claude_desktop_config.json` |
 | Windows | `%APPDATA%\Claude\claude_desktop_config.json` |
+| Claude Code | project-local `.mcp.json` (also set `enableAllProjectMcpServers: true` in `.claude/settings.local.json`) |
 
 ```json
 {
@@ -41,9 +42,7 @@ Add to your Claude Desktop config:
 }
 ```
 
-For Claude Code, the same block goes into a project-level `.mcp.json` at the repo root, then set `"enableAllProjectMcpServers": true` in `.claude/settings.local.json`.
-
-Restart Claude Desktop fully (⌘Q, not just close the window) to pick up the config.
+Restart Claude Desktop fully (⌘Q on macOS, not just close the window).
 
 ## Tools
 
