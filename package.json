@@ -1,6 +1,6 @@
 {
   "name": "@0x50b/mcp-twitterapi",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "MCP server for fetching tweets from a specific X (Twitter) user via twitterapi.io.",
   "license": "MIT",
   "author": "0x50b <0x50b@proton.me>",
