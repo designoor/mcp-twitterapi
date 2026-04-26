@@ -18,6 +18,15 @@ export interface FetchTweetsInput {
   minFaves?: number;
 }
 
+export type MediaKind = "photo" | "video" | "animated_gif";
+
+export interface TweetMedia {
+  type: MediaKind;
+  url: string;
+  videoUrl?: string;
+  altText?: string;
+}
+
 export interface TrimmedTweet {
   id: string;
   url: string;
@@ -36,6 +45,8 @@ export interface TrimmedTweet {
   isReply?: boolean;
   inReplyToUsername?: string;
   conversationId?: string;
+  hasMedia?: boolean;
+  media?: TweetMedia[];
   quotedTweet?: QuotedOrRetweeted;
   retweetedTweet?: QuotedOrRetweeted;
 }
@@ -45,6 +56,7 @@ interface QuotedOrRetweeted {
   text?: string;
   author?: string;
   createdAt?: string;
+  hasMedia?: boolean;
 }
 
 export type StoppedReason =
@@ -86,7 +98,34 @@ export function buildQuery(
   return parts.join(" ");
 }
 
-function trimTweet(raw: any): TrimmedTweet {
+function extractMedia(raw: any): TweetMedia[] {
+  const items: any[] = raw?.extendedEntities?.media ?? [];
+  const out: TweetMedia[] = [];
+  for (const m of items) {
+    if (!m?.type || !m?.media_url_https) continue;
+    const item: TweetMedia = {
+      type: m.type,
+      url: m.media_url_https,
+    };
+    if (m.type === "video" || m.type === "animated_gif") {
+      const variants: any[] = m.video_info?.variants ?? [];
+      let best: { bitrate: number; url: string } | null = null;
+      for (const v of variants) {
+        if (v?.content_type !== "video/mp4" || typeof v?.url !== "string") continue;
+        const bitrate = typeof v.bitrate === "number" ? v.bitrate : 0;
+        if (!best || bitrate > best.bitrate) best = { bitrate, url: v.url };
+      }
+      if (best) item.videoUrl = best.url;
+    }
+    if (typeof m.ext_alt_text === "string" && m.ext_alt_text.length > 0) {
+      item.altText = m.ext_alt_text;
+    }
+    out.push(item);
+  }
+  return out;
+}
+
+export function trimTweet(raw: any): TrimmedTweet {
   const trimmed: TrimmedTweet = {
     id: raw.id,
     url: raw.url,
@@ -111,6 +150,12 @@ function trimTweet(raw: any): TrimmedTweet {
     conversationId: raw.conversationId,
   };
 
+  const media = extractMedia(raw);
+  if (media.length > 0) {
+    trimmed.hasMedia = true;
+    trimmed.media = media;
+  }
+
   if (raw.quoted_tweet) {
     trimmed.quotedTweet = {
       id: raw.quoted_tweet.id,
@@ -118,6 +163,9 @@ function trimTweet(raw: any): TrimmedTweet {
       author: raw.quoted_tweet.author?.userName,
       createdAt: raw.quoted_tweet.createdAt,
     };
+    if (extractMedia(raw.quoted_tweet).length > 0) {
+      trimmed.quotedTweet.hasMedia = true;
+    }
   }
   if (raw.retweeted_tweet) {
     trimmed.retweetedTweet = {
@@ -126,6 +174,9 @@ function trimTweet(raw: any): TrimmedTweet {
       author: raw.retweeted_tweet.author?.userName,
       createdAt: raw.retweeted_tweet.createdAt,
     };
+    if (extractMedia(raw.retweeted_tweet).length > 0) {
+      trimmed.retweetedTweet.hasMedia = true;
+    }
   }
 
   return trimmed;
@@ -215,7 +266,7 @@ export function buildResponse(args: {
     } else {
       const dropped = fetchedTotal !== undefined ? fetchedTotal - count : 0;
       const avgBytes = byteSize !== undefined ? Math.round(byteSize / count) : 0;
-      hint = `Returned ${count} tweets covering ${fetched.oldest} → ${fetched.newest}. Response size was capped at ~${Math.round(BYTE_BUDGET / 1000)}KB (MCP client limit); ${dropped} additional fetched tweets were dropped to fit, and more tweets may exist earlier in the window. This user's tweets average ~${avgBytes} bytes, so subsequent calls will likely hit the same cap. **Stop and ask the user whether to continue before making another fetch_tweets call** — each continuation costs additional API requests. If the user confirms, continue with the nextCall parameters; otherwise consider summarizing what you have or lowering \`limit\`.`;
+      hint = `Returned ${count} tweets covering ${fetched.oldest} → ${fetched.newest}. Response size was capped at ~${Math.round(BYTE_BUDGET / 1000)}KB (MCP client limit); ${dropped} additional fetched tweets were dropped to fit, and more tweets may exist earlier in the window. This user's tweets average ~${avgBytes} bytes — heavy media or long alt-text tends to drive that up, so subsequent calls will likely hit the same cap. **Stop and ask the user whether to continue before making another fetch_tweets call** — each continuation costs additional API requests. If the user confirms, continue with the nextCall parameters; otherwise consider summarizing what you have or lowering \`limit\`.`;
     }
   } else {
     hint = `Window complete. All ${count} tweets in the requested range have been returned.`;

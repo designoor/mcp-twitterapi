@@ -48,7 +48,7 @@ Restart Claude Desktop fully (⌘Q on macOS, not just close the window).
 
 ### `fetch_tweets`
 
-Fetch tweets from a specific X (Twitter) user via twitterapi.io's advanced search. Combines `from:{username}` with optional time bounds, extra query terms, and content filters. Returns up to `limit` tweets in reverse-chronological order, trimmed to high-signal fields (text, counts, author, quoted/retweeted content).
+Fetch tweets from a specific X (Twitter) user via twitterapi.io's advanced search. Combines `from:{username}` with optional time bounds, extra query terms, and content filters. Returns up to `limit` tweets in reverse-chronological order, trimmed to high-signal fields (text, counts, author, quoted/retweeted content, attached media).
 
 #### Parameters
 
@@ -78,6 +78,17 @@ Fetch tweets from a specific X (Twitter) user via twitterapi.io's advanced searc
 | `nextCall` | `{ since, until }` \| `null` | Exact params for the follow-up call when `hasMore: true` |
 | `hint` | string | Human-readable guidance (what was returned, what to do next) |
 | `queryString` | string | Echo of the query sent to twitterapi.io — for debugging |
+
+Each tweet includes `hasMedia` (only when true) and `media[]` with `{type, url, videoUrl?, altText?}`:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `type` | `photo` \| `video` \| `animated_gif` | media kind |
+| `url` | string | image URL (photo) or thumbnail/poster (video, gif) |
+| `videoUrl` | string | highest-bitrate mp4 — video and gif only |
+| `altText` | string | author-provided accessibility description, when present |
+
+Quoted and retweeted tweets surface only `hasMedia` (not the full media array) to keep nesting cheap.
 
 #### Response size cap
 

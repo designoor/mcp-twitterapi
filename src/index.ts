@@ -26,6 +26,8 @@ server.registerTool(
       "Combines `from:{username}` with optional time bounds, filters, and additional query terms. " +
       "Returns up to `limit` tweets in reverse-chronological order, trimmed to high-signal fields " +
       "(text, counts, author, quoted/retweeted content). " +
+      "Each tweet has `hasMedia` and, when present, a `media[]` array with `{type, url, videoUrl?, altText?}` " +
+      "for attached photos/videos/gifs. " +
       "If more tweets exist in the window, the response sets `hasMore: true` and includes a `nextCall` " +
       "object with the exact parameters for the follow-up call; `hasMore: false` means the window is " +
       "fully fetched. Does NOT post, delete, or modify tweets. Does NOT fetch replies TO a tweet " +
