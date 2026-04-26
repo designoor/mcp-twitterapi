@@ -9,7 +9,7 @@ Build with
 ░█▀▄░█░█░▀▀█░█▀█░█▀▄░░█░░░░█▀▀░█░░░█░█░█░█░░█░░█░█░▀▀█
 ░▀░▀░▀▀▀░▀▀▀░▀░▀░▀░▀░▀▀▀░░░▀░░░▀▀▀░▀▀▀░▀▀▀░▀▀▀░▀░▀░▀▀▀
 ```
-Build with [create-mcp@kusari-plugin](https://github.com/designoor/kusari-plugins) skill.
+Build with [create-mcp@kusari-plugin](https://github.com/kusarixyz/kusari-plugins) skill.
 
 ## Requirements
 
