@@ -169,6 +169,31 @@ describe("trimTweet media extraction", () => {
     ]);
   });
 
+  it("extracts Xquik top-level media and author username", () => {
+    const t = trimTweet({
+      ...baseRaw,
+      author: { username: "xquikcom", name: "Xquik", id: "200" },
+      media: [
+        {
+          type: "video",
+          mediaUrl: "https://video.twimg.com/ext_tw_video/sample.mp4",
+          url: "https://t.co/example",
+        },
+      ],
+      url: undefined,
+    });
+    expect(t.author.userName).toBe("xquikcom");
+    expect(t.url).toBe("https://x.com/xquikcom/status/1");
+    expect(t.hasMedia).toBe(true);
+    expect(t.media).toEqual([
+      {
+        type: "video",
+        url: "https://video.twimg.com/ext_tw_video/sample.mp4",
+        videoUrl: "https://video.twimg.com/ext_tw_video/sample.mp4",
+      },
+    ]);
+  });
+
   it("skips media items without type or media_url_https", () => {
     const t = trimTweet({
       ...baseRaw,

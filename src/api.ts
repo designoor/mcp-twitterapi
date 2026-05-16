@@ -1,9 +1,19 @@
 import { parseTimeToUnix } from "./time.js";
 
-const ENDPOINT = "https://api.twitterapi.io/twitter/tweet/advanced_search";
+const TWITTERAPI_IO_ENDPOINT = "https://api.twitterapi.io/twitter/tweet/advanced_search";
 const TWEETS_ENDPOINT = "https://api.twitterapi.io/twitter/tweets";
+const XQUIK_DEFAULT_BASE_URL = "https://xquik.com/api/v1";
+const XQUIK_API_CONTRACT = "2026-04-29";
+const XQUIK_MAX_LIMIT = 200;
 const MAX_PAGES = 110;
 const BYTE_BUDGET = 450_000;
+
+export type ApiProvider = "twitterapi_io" | "xquik";
+
+export interface FetchTweetsOptions {
+  provider?: ApiProvider;
+  baseUrl?: string;
+}
 
 export interface FetchTweetsInput {
   username: string;
@@ -99,14 +109,38 @@ export function buildQuery(
   return parts.join(" ");
 }
 
+function buildXquikQuery(input: FetchTweetsInput): string {
+  const parts: string[] = [`from:${input.username}`];
+
+  if (input.query && input.query.trim()) parts.push(input.query.trim());
+
+  return parts.join(" ");
+}
+
+function joinUrl(baseUrl: string, path: string): string {
+  const trimmedBase = baseUrl.replace(/\/+$/, "");
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  return `${trimmedBase}${normalizedPath}`;
+}
+
+function readMediaUrl(raw: any): string | null {
+  if (typeof raw?.mediaUrl === "string" && raw.mediaUrl.length > 0) return raw.mediaUrl;
+  if (typeof raw?.media_url_https === "string" && raw.media_url_https.length > 0) {
+    return raw.media_url_https;
+  }
+  if (typeof raw?.url === "string" && raw.url.length > 0) return raw.url;
+  return null;
+}
+
 function extractMedia(raw: any): TweetMedia[] {
-  const items: any[] = raw?.extendedEntities?.media ?? [];
+  const items: any[] = raw?.extendedEntities?.media ?? raw?.media ?? [];
   const out: TweetMedia[] = [];
   for (const m of items) {
-    if (!m?.type || !m?.media_url_https) continue;
+    const mediaUrl = readMediaUrl(m);
+    if (!m?.type || !mediaUrl) continue;
     const item: TweetMedia = {
       type: m.type,
-      url: m.media_url_https,
+      url: mediaUrl,
     };
     if (m.type === "video" || m.type === "animated_gif") {
       const variants: any[] = m.video_info?.variants ?? [];
@@ -117,6 +151,9 @@ function extractMedia(raw: any): TweetMedia[] {
         if (!best || bitrate > best.bitrate) best = { bitrate, url: v.url };
       }
       if (best) item.videoUrl = best.url;
+      if (!best && typeof m.mediaUrl === "string" && m.mediaUrl.length > 0) {
+        item.videoUrl = m.mediaUrl;
+      }
     }
     if (typeof m.ext_alt_text === "string" && m.ext_alt_text.length > 0) {
       item.altText = m.ext_alt_text;
@@ -127,14 +164,15 @@ function extractMedia(raw: any): TweetMedia[] {
 }
 
 export function trimTweet(raw: any): TrimmedTweet {
+  const userName = raw.author?.userName ?? raw.author?.username;
   const trimmed: TrimmedTweet = {
     id: raw.id,
-    url: raw.url,
+    url: raw.url ?? (userName ? `https://x.com/${userName}/status/${raw.id}` : `https://x.com/i/web/status/${raw.id}`),
     text: raw.text,
     createdAt: raw.createdAt,
     lang: raw.lang,
     author: {
-      userName: raw.author?.userName,
+      userName,
       name: raw.author?.name,
       id: raw.author?.id,
     },
@@ -161,7 +199,7 @@ export function trimTweet(raw: any): TrimmedTweet {
     trimmed.quotedTweet = {
       id: raw.quoted_tweet.id,
       text: raw.quoted_tweet.text,
-      author: raw.quoted_tweet.author?.userName,
+      author: raw.quoted_tweet.author?.userName ?? raw.quoted_tweet.author?.username,
       createdAt: raw.quoted_tweet.createdAt,
     };
     if (extractMedia(raw.quoted_tweet).length > 0) {
@@ -172,7 +210,7 @@ export function trimTweet(raw: any): TrimmedTweet {
     trimmed.retweetedTweet = {
       id: raw.retweeted_tweet.id,
       text: raw.retweeted_tweet.text,
-      author: raw.retweeted_tweet.author?.userName,
+      author: raw.retweeted_tweet.author?.userName ?? raw.retweeted_tweet.author?.username,
       createdAt: raw.retweeted_tweet.createdAt,
     };
     if (extractMedia(raw.retweeted_tweet).length > 0) {
@@ -181,6 +219,100 @@ export function trimTweet(raw: any): TrimmedTweet {
   }
 
   return trimmed;
+}
+
+interface ApiPage {
+  tweets: any[];
+  hasNextPage: boolean;
+  nextCursor?: string;
+}
+
+async function fetchTwitterApiIoPage(args: {
+  input: FetchTweetsInput;
+  apiKey: string;
+  sinceUnix: number | null;
+  currentUntil: number;
+}): Promise<ApiPage> {
+  const { input, apiKey, sinceUnix, currentUntil } = args;
+  const url = new URL(TWITTERAPI_IO_ENDPOINT);
+  url.searchParams.set("query", buildQuery(input, sinceUnix, currentUntil));
+  url.searchParams.set("queryType", input.queryType);
+
+  const response = await fetch(url, {
+    method: "GET",
+    headers: { "X-API-Key": apiKey, Accept: "application/json" },
+  });
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new Error(
+      `twitterapi.io returned ${response.status} ${response.statusText}${body ? `: ${body.slice(0, 500)}` : ""}`,
+    );
+  }
+
+  const data = (await response.json()) as {
+    tweets?: any[];
+    has_next_page?: boolean;
+  };
+
+  return {
+    tweets: data.tweets ?? [],
+    hasNextPage: Boolean(data.has_next_page),
+  };
+}
+
+async function fetchXquikPage(args: {
+  input: FetchTweetsInput;
+  apiKey: string;
+  sinceUnix: number | null;
+  currentUntil: number;
+  cursor: string | null;
+  remaining: number;
+  baseUrl?: string;
+}): Promise<ApiPage> {
+  const { input, apiKey, sinceUnix, currentUntil, cursor, remaining, baseUrl } = args;
+  const url = new URL(joinUrl(baseUrl ?? XQUIK_DEFAULT_BASE_URL, "/x/tweets/search"));
+  url.searchParams.set("q", buildXquikQuery(input));
+  url.searchParams.set("queryType", input.queryType);
+  url.searchParams.set("limit", String(Math.min(remaining, XQUIK_MAX_LIMIT)));
+  if (sinceUnix !== null) url.searchParams.set("sinceTime", new Date(sinceUnix * 1000).toISOString());
+  url.searchParams.set("untilTime", new Date(currentUntil * 1000).toISOString());
+  if (cursor) url.searchParams.set("cursor", cursor);
+  if (input.lang) url.searchParams.set("language", input.lang);
+  if (input.minFaves !== undefined) url.searchParams.set("minFaves", String(input.minFaves));
+  if (!input.includeRetweets) url.searchParams.set("retweets", "exclude");
+  if (!input.includeQuotes) url.searchParams.set("quotes", "exclude");
+  if (!input.includeReplies) url.searchParams.set("replies", "exclude");
+
+  const response = await fetch(url, {
+    method: "GET",
+    headers: {
+      "x-api-key": apiKey,
+      "xquik-api-contract": XQUIK_API_CONTRACT,
+      Accept: "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new Error(
+      `Xquik returned ${response.status} ${response.statusText}${body ? `: ${body.slice(0, 500)}` : ""}`,
+    );
+  }
+
+  const data = (await response.json()) as {
+    tweets?: any[];
+    has_next_page?: boolean;
+    has_more?: boolean;
+    next_cursor?: string;
+    nextCursor?: string;
+  };
+
+  return {
+    tweets: data.tweets ?? [],
+    hasNextPage: Boolean(data.has_next_page ?? data.has_more),
+    nextCursor: data.next_cursor ?? data.nextCursor,
+  };
 }
 
 function parseTweetTime(s: string): number {
@@ -295,14 +427,17 @@ export function buildResponse(args: {
 export async function fetchTweets(
   input: FetchTweetsInput,
   apiKey: string,
+  options: FetchTweetsOptions = {},
 ): Promise<FetchTweetsResult> {
+  const provider = options.provider ?? "twitterapi_io";
   const nowSec = Math.floor(Date.now() / 1000);
   const sinceUnix = input.since ? parseTimeToUnix(input.since, nowSec) : null;
   const untilUnix = input.until ? parseTimeToUnix(input.until, nowSec) : nowSec;
   const windowSinceIso = sinceUnix !== null ? new Date(sinceUnix * 1000).toISOString() : null;
   const windowUntilIso = new Date(untilUnix * 1000).toISOString();
 
-  const queryString = buildQuery(input, sinceUnix, untilUnix);
+  const queryString =
+    provider === "xquik" ? buildXquikQuery(input) : buildQuery(input, sinceUnix, untilUnix);
   let collected: TrimmedTweet[] = [];
   const seenIds = new Set<string>();
   let pages = 0;
@@ -314,6 +449,7 @@ export async function fetchTweets(
     | "api_exhausted"
     | "window_exhausted" = "api_exhausted";
   let currentUntil = untilUnix;
+  let cursor: string | null = null;
 
   while (true) {
     if (collected.length >= input.limit) {
@@ -325,32 +461,24 @@ export async function fetchTweets(
       break;
     }
 
-    const url = new URL(ENDPOINT);
-    url.searchParams.set("query", buildQuery(input, sinceUnix, currentUntil));
-    url.searchParams.set("queryType", input.queryType);
-
-    const response = await fetch(url, {
-      method: "GET",
-      headers: { "X-API-Key": apiKey, Accept: "application/json" },
-    });
-
-    if (!response.ok) {
-      const body = await response.text().catch(() => "");
-      throw new Error(
-        `twitterapi.io returned ${response.status} ${response.statusText}${body ? `: ${body.slice(0, 500)}` : ""}`,
-      );
-    }
-
-    const data = (await response.json()) as {
-      tweets?: any[];
-      has_next_page?: boolean;
-    };
+    const page: ApiPage =
+      provider === "xquik"
+        ? await fetchXquikPage({
+            input,
+            apiKey,
+            sinceUnix,
+            currentUntil,
+            cursor,
+            remaining: input.limit - collected.length,
+            baseUrl: options.baseUrl,
+          })
+        : await fetchTwitterApiIoPage({ input, apiKey, sinceUnix, currentUntil });
 
     pages += 1;
 
     let addedThisCall = 0;
     let oldestMsThisCall = Infinity;
-    for (const t of data.tweets ?? []) {
+    for (const t of page.tweets) {
       if (seenIds.has(t.id)) continue;
       seenIds.add(t.id);
       collected.push(trimTweet(t));
@@ -364,23 +492,26 @@ export async function fetchTweets(
       exitReason = "no_new_tweets";
       break;
     }
-    if (!data.has_next_page) {
+    if (!page.hasNextPage) {
       exitReason = "api_exhausted";
       break;
     }
-
-    // Walk the upper bound backward to just before the oldest tweet we just received.
-    if (oldestMsThisCall === Infinity) {
-      // Shouldn't happen — we added tweets, so at least one had a parseable createdAt.
-      exitReason = "api_exhausted";
-      break;
+    if (provider === "xquik" && page.nextCursor) {
+      cursor = page.nextCursor;
+    } else {
+      // Walk the upper bound backward to just before the oldest tweet we just received.
+      if (oldestMsThisCall === Infinity) {
+        // Shouldn't happen — we added tweets, so at least one had a parseable createdAt.
+        exitReason = "api_exhausted";
+        break;
+      }
+      const newUntil = Math.floor(oldestMsThisCall / 1000) - 1;
+      if (sinceUnix !== null && newUntil <= sinceUnix) {
+        exitReason = "window_exhausted";
+        break;
+      }
+      currentUntil = newUntil;
     }
-    const newUntil = Math.floor(oldestMsThisCall / 1000) - 1;
-    if (sinceUnix !== null && newUntil <= sinceUnix) {
-      exitReason = "window_exhausted";
-      break;
-    }
-    currentUntil = newUntil;
 
     if (Buffer.byteLength(JSON.stringify(collected), "utf8") > BYTE_BUDGET) {
       hitByteBudget = true;

@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { buildQuery, fetchTweetsByIds, type FetchTweetsInput } from "./api.js";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { buildQuery, fetchTweets, fetchTweetsByIds, type FetchTweetsInput } from "./api.js";
 
 const base: FetchTweetsInput = {
   username: "elonmusk",
@@ -77,6 +77,70 @@ describe("buildQuery", () => {
     expect(q).toBe(
       "from:elonmusk rocket -filter:retweets -filter:replies lang:en min_faves:50",
     );
+  });
+
+  it("maps Xquik provider requests to Xquik search params and headers", async () => {
+    const fetchMock = vi.fn(async () => {
+      return new Response(
+        JSON.stringify({
+          tweets: [
+            {
+              id: "1",
+              text: "hello",
+              createdAt: "2026-04-20T10:00:00Z",
+              author: { username: "elonmusk", name: "Elon Musk", id: "100" },
+              likeCount: 1,
+            },
+          ],
+          has_next_page: false,
+          next_cursor: "",
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    });
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    try {
+      const result = await fetchTweets(
+        {
+          ...base,
+          since: "2026-04-01T00:00:00Z",
+          until: "2026-04-21T00:00:00Z",
+          limit: 20,
+          includeRetweets: false,
+          includeQuotes: false,
+          includeReplies: false,
+          lang: "en",
+          minFaves: 10,
+        },
+        "xquik-test-key",
+        { provider: "xquik" },
+      );
+
+      expect(result.count).toBe(1);
+      expect(result.tweets[0]?.author.userName).toBe("elonmusk");
+
+      const [url, init] = fetchMock.mock.calls[0];
+      const requestUrl = new URL(String(url));
+      const headers = new Headers(init?.headers);
+      expect(requestUrl.origin + requestUrl.pathname).toBe(
+        "https://xquik.com/api/v1/x/tweets/search",
+      );
+      expect(requestUrl.searchParams.get("q")).toBe("from:elonmusk");
+      expect(requestUrl.searchParams.get("queryType")).toBe("Latest");
+      expect(requestUrl.searchParams.get("sinceTime")).toBe("2026-04-01T00:00:00.000Z");
+      expect(requestUrl.searchParams.get("untilTime")).toBe("2026-04-21T00:00:00.000Z");
+      expect(requestUrl.searchParams.get("retweets")).toBe("exclude");
+      expect(requestUrl.searchParams.get("quotes")).toBe("exclude");
+      expect(requestUrl.searchParams.get("replies")).toBe("exclude");
+      expect(requestUrl.searchParams.get("language")).toBe("en");
+      expect(requestUrl.searchParams.get("minFaves")).toBe("10");
+      expect(headers.get("x-api-key")).toBe("xquik-test-key");
+      expect(headers.get("xquik-api-contract")).toBe("2026-04-29");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });
 

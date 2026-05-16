@@ -2,15 +2,34 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { fetchTweets, fetchTweetsByIds } from "./api.js";
+import { fetchTweets, fetchTweetsByIds, type ApiProvider } from "./api.js";
 
-const API_KEY_ENV = "TWITTERAPI_IO_API_KEY";
+const PROVIDER_ENV = "X_API_PROVIDER";
+const TWITTERAPI_IO_API_KEY_ENV = "TWITTERAPI_IO_API_KEY";
+const XQUIK_API_KEY_ENV = "XQUIK_API_KEY";
+const XQUIK_API_BASE_URL_ENV = "XQUIK_API_BASE_URL";
+
+function readProvider(): ApiProvider {
+  const raw = (process.env[PROVIDER_ENV] ?? "twitterapi_io")
+    .trim()
+    .toLowerCase()
+    .replace(/[.-]/g, "_");
+
+  if (raw === "twitterapi_io" || raw === "twitterapiio") return "twitterapi_io";
+  if (raw === "xquik") return "xquik";
+
+  throw new Error(`Unsupported ${PROVIDER_ENV}: ${process.env[PROVIDER_ENV]}`);
+}
+
+function apiKeyEnvForProvider(provider: ApiProvider): string {
+  return provider === "xquik" ? XQUIK_API_KEY_ENV : TWITTERAPI_IO_API_KEY_ENV;
+}
 
 const server = new McpServer(
-  { name: "mcp-twitterapi", version: "0.1.0" },
+  { name: "mcp-twitterapi", version: "0.3.0" },
   {
     instructions:
-      "Use fetch_tweets to retrieve tweets from a specific X (Twitter) user via twitterapi.io. " +
+      "Use fetch_tweets to retrieve tweets from a specific X (Twitter) user via the configured provider. " +
       "When the user asks about a person's recent tweets, prefer a small max_results (20-50) and " +
       "a relative `since` like '24h' or '7d'. Set include_retweets=false and include_quotes=false " +
       "when the user wants only the author's original posts. " +
@@ -23,7 +42,7 @@ server.registerTool(
   {
     title: "Fetch Tweets",
     description:
-      "Fetch tweets from a specific X (Twitter) user via twitterapi.io advanced search. " +
+      "Fetch tweets from a specific X (Twitter) user via TwitterAPI.io or Xquik advanced search. " +
       "Combines `from:{username}` with optional time bounds, filters, and additional query terms. " +
       "Returns up to `limit` tweets in reverse-chronological order, trimmed to high-signal fields " +
       "(text, counts, author, quoted/retweeted content). " +
@@ -105,14 +124,25 @@ server.registerTool(
     },
   },
   async (args) => {
-    const apiKey = process.env[API_KEY_ENV];
+    let provider: ApiProvider;
+    try {
+      provider = readProvider();
+    } catch (err) {
+      return {
+        isError: true,
+        content: [{ type: "text", text: err instanceof Error ? err.message : String(err) }],
+      };
+    }
+
+    const apiKeyEnv = apiKeyEnvForProvider(provider);
+    const apiKey = process.env[apiKeyEnv];
     if (!apiKey) {
       return {
         isError: true,
         content: [
           {
             type: "text",
-            text: `Missing ${API_KEY_ENV}. Set it in the MCP server's env block (Claude Desktop config or your shell).`,
+            text: `Missing ${apiKeyEnv}. Set it in the MCP server's env block (Claude Desktop config or your shell).`,
           },
         ],
       };
@@ -134,6 +164,10 @@ server.registerTool(
           minFaves: args.min_faves,
         },
         apiKey,
+        {
+          provider,
+          baseUrl: provider === "xquik" ? process.env[XQUIK_API_BASE_URL_ENV] : undefined,
+        },
       );
 
       return {
@@ -181,14 +215,14 @@ server.registerTool(
     },
   },
   async (args) => {
-    const apiKey = process.env[API_KEY_ENV];
+    const apiKey = process.env[TWITTERAPI_IO_API_KEY_ENV];
     if (!apiKey) {
       return {
         isError: true,
         content: [
           {
             type: "text",
-            text: `Missing ${API_KEY_ENV}. Set it in the MCP server's env block (Claude Desktop config or your shell).`,
+            text: `Missing ${TWITTERAPI_IO_API_KEY_ENV}. Set it in the MCP server's env block (Claude Desktop config or your shell).`,
           },
         ],
       };
