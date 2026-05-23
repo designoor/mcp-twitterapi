@@ -44,6 +44,35 @@ Add to your Claude Desktop config:
 
 Restart Claude Desktop fully (⌘Q on macOS, not just close the window).
 
+### Run from a local clone
+
+If you'd rather run your own checkout (e.g. for a forked version, an unpublished change), build the server first:
+
+```sh
+git clone https://github.com/designoor/mcp-twitterapi.git
+cd mcp-twitterapi
+pnpm install
+pnpm build
+```
+
+Then point your client config at the built `dist/index.js` using an **absolute path**:
+
+```json
+{
+  "mcpServers": {
+    "twitter": {
+      "command": "node",
+      "args": ["/absolute/path/to/mcp-twitterapi/dist/index.js"],
+      "env": {
+        "TWITTERAPI_IO_API_KEY": "your-key-here"
+      }
+    }
+  }
+}
+```
+
+Re-run `pnpm build` after any source change, then restart the client.
+
 ## Tools
 
 ### `fetch_tweets`
@@ -121,6 +150,10 @@ fetch_tweets({ username: "elonmusk", since: "...", until: "2026-04-15T10:23:00Z"
 Each call paginates by **walking the `until` bound backward** — per twitterapi.io's own guidance (their cursor is documented as unreliable). After each API page, the tool narrows `until` to one second before the oldest tweet it just received, queries again, and stops when the API reports no more tweets, when a page yields zero new IDs, or when the caller's `limit` / byte budget is reached. Duplicates are filtered by tweet ID as a safety net for boundary tweets. A pagination safety ceiling of 110 API calls per invocation prevents runaway cost on pathological windows; if it fires, `hasMore` stays `true` and the returned `nextCall` lets you resume from the oldest fetched tweet.
 
 </details>
+
+## Skills
+
+This repo also ships an optional Claude Code skill, [`fetch-tweets`](skills/fetch-tweets/SKILL.md), that wraps `fetch_tweets` with a `[since, until]` pagination loop and prompt-injection guidance for tweet content. It is not bundled with the MCP server — see [`skills/`](skills/) for what's available and how to copy it into your own skills directory.
 
 ## Local development (contributors only)
 
