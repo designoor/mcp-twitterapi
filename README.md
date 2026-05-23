@@ -151,6 +151,20 @@ Each call paginates by **walking the `until` bound backward** — per twitterapi
 
 </details>
 
+### `fetch_tweet_by_id`
+
+Fetch one or more tweets by their numeric IDs via twitterapi.io. Returns the same trimmed tweet shape as `fetch_tweets` (text, counts, author, media). Does **not** search or filter — use `fetch_tweets` for user timeline search.
+
+#### Parameters
+
+| Param | Type | Default | Description |
+|---|---|---|---|
+| `tweet_ids` | string[] | **required** | Array of numeric tweet ID strings (e.g. `["1846987139428634858"]`). Max 100 per call. |
+
+#### Response
+
+A flat array of trimmed tweet objects (same shape as individual items in the `fetch_tweets` `tweets` array). Returns an error when none of the requested IDs resolve to a tweet.
+
 ## Skills
 
 This repo also ships an optional Claude Code skill, [`fetch-tweets`](skills/fetch-tweets/SKILL.md), that wraps `fetch_tweets` with a `[since, until]` pagination loop and prompt-injection guidance for tweet content. It is not bundled with the MCP server — see [`skills/`](skills/) for what's available and how to copy it into your own skills directory.
