@@ -1,6 +1,7 @@
 import { parseTimeToUnix } from "./time.js";
 
 const ENDPOINT = "https://api.twitterapi.io/twitter/tweet/advanced_search";
+const TWEETS_ENDPOINT = "https://api.twitterapi.io/twitter/tweets";
 const MAX_PAGES = 110;
 const BYTE_BUDGET = 450_000;
 
@@ -420,6 +421,34 @@ export async function fetchTweets(
     fetchedTotal,
     byteSize,
   });
+}
+
+export async function fetchTweetsByIds(
+  ids: string[],
+  apiKey: string,
+): Promise<TrimmedTweet[]> {
+  const url = new URL(TWEETS_ENDPOINT);
+  url.searchParams.set("tweet_ids", ids.join(","));
+
+  const response = await fetch(url, {
+    method: "GET",
+    headers: { "X-API-Key": apiKey, Accept: "application/json" },
+  });
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new Error(
+      `twitterapi.io returned ${response.status} ${response.statusText}${body ? `: ${body.slice(0, 500)}` : ""}`,
+    );
+  }
+
+  const data = (await response.json()) as {
+    tweets?: any[];
+    status?: string;
+    message?: string;
+  };
+
+  return (data.tweets ?? []).map(trimTweet);
 }
 
 function largestPrefixUnderBudget(tweets: TrimmedTweet[], budget: number): number {

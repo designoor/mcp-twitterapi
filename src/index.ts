@@ -2,7 +2,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { fetchTweets } from "./api.js";
+import { fetchTweets, fetchTweetsByIds } from "./api.js";
 
 const API_KEY_ENV = "TWITTERAPI_IO_API_KEY";
 
@@ -13,7 +13,8 @@ const server = new McpServer(
       "Use fetch_tweets to retrieve tweets from a specific X (Twitter) user via twitterapi.io. " +
       "When the user asks about a person's recent tweets, prefer a small max_results (20-50) and " +
       "a relative `since` like '24h' or '7d'. Set include_retweets=false and include_quotes=false " +
-      "when the user wants only the author's original posts.",
+      "when the user wants only the author's original posts. " +
+      "Use fetch_tweet_by_id when the user provides a specific tweet ID or URL and wants its content.",
   },
 );
 
@@ -137,6 +138,77 @@ server.registerTool(
 
       return {
         content: [{ type: "text", text: JSON.stringify(result) }],
+      };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return {
+        isError: true,
+        content: [{ type: "text", text: message }],
+      };
+    }
+  },
+);
+
+server.registerTool(
+  "fetch_tweet_by_id",
+  {
+    title: "Fetch Tweet by ID",
+    description:
+      "Fetch one or more tweets by their numeric IDs via twitterapi.io. " +
+      "Returns the same trimmed tweet shape as fetch_tweets (text, counts, author, media). " +
+      "Does NOT search or filter — use fetch_tweets for user timeline search.",
+    inputSchema: {
+      tweet_ids: z
+        .array(
+          z
+            .string()
+            .regex(/^\d+$/, "Tweet ID must be numeric"),
+        )
+        .min(1)
+        .max(100)
+        .describe(
+          "Array of numeric tweet ID strings (e.g. ['1846987139428634858']). Max 100 per call.",
+        ),
+    },
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
+    _meta: {
+      "anthropic/maxResultSizeChars": 500000,
+    },
+  },
+  async (args) => {
+    const apiKey = process.env[API_KEY_ENV];
+    if (!apiKey) {
+      return {
+        isError: true,
+        content: [
+          {
+            type: "text",
+            text: `Missing ${API_KEY_ENV}. Set it in the MCP server's env block (Claude Desktop config or your shell).`,
+          },
+        ],
+      };
+    }
+
+    try {
+      const tweets = await fetchTweetsByIds(args.tweet_ids, apiKey);
+      if (tweets.length === 0) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text",
+              text: "No tweets found for the given IDs. Verify the tweet IDs are correct and the tweets have not been deleted.",
+            },
+          ],
+        };
+      }
+      return {
+        content: [{ type: "text", text: JSON.stringify(tweets) }],
       };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
