@@ -5,6 +5,7 @@ Optional [Claude Code skills](https://docs.claude.com/en/docs/claude-code/skills
 ## Available skills
 
 - **[fetch-tweets](fetch-tweets/SKILL.md)** — wraps `mcp__twitter__fetch_tweets`, drains a `[since, until]` window across `hasMore` pagination, normalizes the result, and includes guidance for treating tweet content as untrusted input (prompt-injection defense).
+- **[fetch-tweet-by-id](fetch-tweet-by-id/SKILL.md)** — wraps `mcp__twitter__fetch_tweet_by_id`, fetches one or more tweets by their numeric IDs (or URLs). No search, no pagination — just ID → trimmed tweet. Same untrusted-input guardrails as fetch-tweets.
 
 ## Install
 
