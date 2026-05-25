@@ -1,6 +1,6 @@
 # mcp-twitterapi
 
-A local [MCP](https://modelcontextprotocol.io) server that fetches tweets from a specific X (Twitter) user via [twitterapi.io](https://twitterapi.io).
+A local [MCP](https://modelcontextprotocol.io) server that fetches tweets from a specific X (Twitter) user via [twitterapi.io](https://twitterapi.io) by default, or [Xquik](https://docs.xquik.com/api-reference/overview) when configured.
 
 Build with 
 
@@ -14,7 +14,7 @@ Build with [create-mcp@kusari-plugin](https://github.com/kusarixyz/kusari-plugin
 ## Requirements
 
 - Node.js 22+
-- A twitterapi.io API key ([get one here](https://twitterapi.io/dashboard))
+- A twitterapi.io API key ([get one here](https://twitterapi.io/dashboard)) or an Xquik API key
 
 ## Install
 
@@ -36,6 +36,23 @@ Add to your Claude Desktop config:
       "args": ["-y", "@0x50b/mcp-twitterapi"],
       "env": {
         "TWITTERAPI_IO_API_KEY": "your-key-here"
+      }
+    }
+  }
+}
+```
+
+To use Xquik instead, set `X_API_PROVIDER=xquik` and provide `XQUIK_API_KEY`:
+
+```json
+{
+  "mcpServers": {
+    "twitter": {
+      "command": "npx",
+      "args": ["-y", "@0x50b/mcp-twitterapi"],
+      "env": {
+        "X_API_PROVIDER": "xquik",
+        "XQUIK_API_KEY": "your-key-here"
       }
     }
   }
@@ -77,7 +94,7 @@ Re-run `pnpm build` after any source change, then restart the client.
 
 ### `fetch_tweets`
 
-Fetch tweets from a specific X (Twitter) user via twitterapi.io's advanced search. Combines `from:{username}` with optional time bounds, extra query terms, and content filters. Returns up to `limit` tweets in reverse-chronological order, trimmed to high-signal fields (text, counts, author, quoted/retweeted content, attached media).
+Fetch tweets from a specific X (Twitter) user via the configured provider's advanced search. Combines `from:{username}` with optional time bounds, extra query terms, and content filters. Returns up to `limit` tweets in reverse-chronological order, trimmed to high-signal fields (text, counts, author, quoted/retweeted content, attached media).
 
 #### Parameters
 
@@ -106,7 +123,7 @@ Fetch tweets from a specific X (Twitter) user via twitterapi.io's advanced searc
 | `hasMore` | bool | `false` = window fully fetched. `true` = more exist earlier |
 | `nextCall` | `{ since, until }` \| `null` | Exact params for the follow-up call when `hasMore: true` |
 | `hint` | string | Human-readable guidance (what was returned, what to do next) |
-| `queryString` | string | Echo of the query sent to twitterapi.io — for debugging |
+| `queryString` | string | Echo of the provider query for debugging |
 
 Each tweet includes `hasMedia` (only when true) and `media[]` with `{type, url, videoUrl?, altText?}`:
 
@@ -147,7 +164,7 @@ fetch_tweets({ username: "elonmusk", since: "...", until: "2026-04-15T10:23:00Z"
 <details>
 <summary>How pagination works internally</summary>
 
-Each call paginates by **walking the `until` bound backward** — per twitterapi.io's own guidance (their cursor is documented as unreliable). After each API page, the tool narrows `until` to one second before the oldest tweet it just received, queries again, and stops when the API reports no more tweets, when a page yields zero new IDs, or when the caller's `limit` / byte budget is reached. Duplicates are filtered by tweet ID as a safety net for boundary tweets. A pagination safety ceiling of 110 API calls per invocation prevents runaway cost on pathological windows; if it fires, `hasMore` stays `true` and the returned `nextCall` lets you resume from the oldest fetched tweet.
+With TwitterAPI.io, each call paginates by **walking the `until` bound backward** per twitterapi.io's own guidance (their cursor is documented as unreliable). With Xquik, each call uses the provider cursor when one is returned. In both modes, the response keeps the same `nextCall` contract by setting the follow-up `until` to one second before the oldest returned tweet. Duplicates are filtered by tweet ID as a safety net for boundary tweets. A pagination safety ceiling of 110 API calls per invocation prevents runaway cost on pathological windows; if it fires, `hasMore` stays `true` and the returned `nextCall` lets you resume from the oldest fetched tweet.
 
 </details>
 
@@ -181,6 +198,7 @@ pnpm test            # vitest run
 pnpm build           # compiles to dist/
 pnpm dev             # runs via tsx without a build step
 TWITTERAPI_IO_API_KEY=... node dist/index.js   # manual stdio run
+X_API_PROVIDER=xquik XQUIK_API_KEY=... node dist/index.js
 ```
 
 To test changes against Claude Desktop locally, point the config at your built `dist/index.js` via its absolute path instead of `npx`.

@@ -1,7 +1,7 @@
 {
   "name": "@0x50b/mcp-twitterapi",
   "version": "0.3.0",
-  "description": "MCP server for fetching tweets from a specific X (Twitter) user via twitterapi.io.",
+  "description": "MCP server for fetching tweets from a specific X (Twitter) user via TwitterAPI.io or Xquik.",
   "license": "MIT",
   "author": "0x50b <0x50b@proton.me>",
   "repository": {
@@ -21,7 +21,8 @@
     "x",
     "tweets",
     "twitterapi",
-    "twitterapi.io"
+    "twitterapi.io",
+    "xquik"
   ],
   "type": "module",
   "bin": {
