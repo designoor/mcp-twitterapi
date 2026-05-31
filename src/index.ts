@@ -2,9 +2,21 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { fetchTweets, fetchTweetsByIds } from "./api.js";
+import { fetchTweets, fetchTweetsByIds, type ApiProvider } from "./api.js";
 
 const API_KEY_ENV = "TWITTERAPI_IO_API_KEY";
+const GETXAPI_KEY_ENV = "GETXAPI_API_KEY";
+
+function resolveProvider(): { provider: ApiProvider; apiKey: string | undefined; baseUrl?: string } {
+  if (process.env[GETXAPI_KEY_ENV]) {
+    return {
+      provider: "getxapi",
+      apiKey: process.env[GETXAPI_KEY_ENV],
+      baseUrl: process.env.GETXAPI_BASE_URL,
+    };
+  }
+  return { provider: "twitterapi_io", apiKey: process.env[API_KEY_ENV] };
+}
 
 const server = new McpServer(
   { name: "mcp-twitterapi", version: "0.1.0" },
@@ -105,14 +117,14 @@ server.registerTool(
     },
   },
   async (args) => {
-    const apiKey = process.env[API_KEY_ENV];
+    const { provider, apiKey, baseUrl } = resolveProvider();
     if (!apiKey) {
       return {
         isError: true,
         content: [
           {
             type: "text",
-            text: `Missing ${API_KEY_ENV}. Set it in the MCP server's env block (Claude Desktop config or your shell).`,
+            text: `Missing ${API_KEY_ENV} or ${GETXAPI_KEY_ENV}. Set one in the MCP server's env block (Claude Desktop config or your shell).`,
           },
         ],
       };
@@ -134,6 +146,7 @@ server.registerTool(
           minFaves: args.min_faves,
         },
         apiKey,
+        { provider, baseUrl },
       );
 
       return {
