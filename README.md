@@ -1,6 +1,6 @@
 # mcp-twitterapi
 
-A local [MCP](https://modelcontextprotocol.io) server that fetches tweets from a specific X (Twitter) user via [twitterapi.io](https://twitterapi.io).
+A local [MCP](https://modelcontextprotocol.io) server that fetches tweets from a specific X (Twitter) user via [twitterapi.io](https://twitterapi.io) by default, or [GetXAPI](https://getxapi.com) when configured.
 
 Build with 
 
@@ -14,7 +14,7 @@ Build with [create-mcp@kusari-plugin](https://github.com/kusarixyz/kusari-plugin
 ## Requirements
 
 - Node.js 22+
-- A twitterapi.io API key ([get one here](https://twitterapi.io/dashboard))
+- A twitterapi.io API key ([get one here](https://twitterapi.io/dashboard)) or a GetXAPI API key
 
 ## Install
 
@@ -36,6 +36,22 @@ Add to your Claude Desktop config:
       "args": ["-y", "@0x50b/mcp-twitterapi"],
       "env": {
         "TWITTERAPI_IO_API_KEY": "your-key-here"
+      }
+    }
+  }
+}
+```
+
+To use GetXAPI instead, provide `GETXAPI_API_KEY`:
+
+```json
+{
+  "mcpServers": {
+    "twitter": {
+      "command": "npx",
+      "args": ["-y", "@0x50b/mcp-twitterapi"],
+      "env": {
+        "GETXAPI_API_KEY": "your-key-here"
       }
     }
   }

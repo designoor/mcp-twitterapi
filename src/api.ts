@@ -2,8 +2,17 @@ import { parseTimeToUnix } from "./time.js";
 
 const ENDPOINT = "https://api.twitterapi.io/twitter/tweet/advanced_search";
 const TWEETS_ENDPOINT = "https://api.twitterapi.io/twitter/tweets";
+const GETXAPI_DEFAULT_BASE_URL = "https://api.getxapi.com";
+const GETXAPI_MAX_LIMIT = 200;
 const MAX_PAGES = 110;
 const BYTE_BUDGET = 450_000;
+
+export type ApiProvider = "twitterapi_io" | "getxapi";
+
+export interface FetchTweetsOptions {
+  provider?: ApiProvider;
+  baseUrl?: string;
+}
 
 export interface FetchTweetsInput {
   username: string;
@@ -97,6 +106,18 @@ export function buildQuery(
   if (input.minFaves !== undefined) parts.push(`min_faves:${input.minFaves}`);
 
   return parts.join(" ");
+}
+
+function buildGetXAPIQuery(input: FetchTweetsInput): string {
+  const parts: string[] = [`from:${input.username}`];
+  if (input.query && input.query.trim()) parts.push(input.query.trim());
+  return parts.join(" ");
+}
+
+function joinUrl(baseUrl: string, path: string): string {
+  const trimmedBase = baseUrl.replace(/\/+$/, "");
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  return `${trimmedBase}${normalizedPath}`;
 }
 
 function extractMedia(raw: any): TweetMedia[] {
@@ -295,7 +316,13 @@ export function buildResponse(args: {
 export async function fetchTweets(
   input: FetchTweetsInput,
   apiKey: string,
+  options: FetchTweetsOptions = {},
 ): Promise<FetchTweetsResult> {
+  const provider: ApiProvider = options.provider ?? "twitterapi_io";
+  if (provider === "getxapi") {
+    return fetchTweetsGetXAPI(input, apiKey, options.baseUrl);
+  }
+
   const nowSec = Math.floor(Date.now() / 1000);
   const sinceUnix = input.since ? parseTimeToUnix(input.since, nowSec) : null;
   const untilUnix = input.until ? parseTimeToUnix(input.until, nowSec) : nowSec;
@@ -408,6 +435,157 @@ export async function fetchTweets(
     stoppedReason = "max_pages";
   } else {
     // no_new_tweets | api_exhausted | window_exhausted — all mean the window is fully covered
+    stoppedReason = "api_exhausted";
+  }
+
+  return buildResponse({
+    tweets: collected,
+    windowSinceIso,
+    windowUntilIso,
+    limit: input.limit,
+    stoppedReason,
+    queryString,
+    fetchedTotal,
+    byteSize,
+  });
+}
+
+async function fetchTweetsGetXAPI(
+  input: FetchTweetsInput,
+  apiKey: string,
+  baseUrl?: string,
+): Promise<FetchTweetsResult> {
+  const nowSec = Math.floor(Date.now() / 1000);
+  const sinceUnix = input.since ? parseTimeToUnix(input.since, nowSec) : null;
+  const untilUnix = input.until ? parseTimeToUnix(input.until, nowSec) : nowSec;
+  const windowSinceIso = sinceUnix !== null ? new Date(sinceUnix * 1000).toISOString() : null;
+  const windowUntilIso = new Date(untilUnix * 1000).toISOString();
+  const queryString = buildGetXAPIQuery(input);
+
+  let collected: TrimmedTweet[] = [];
+  const seenIds = new Set<string>();
+  let pages = 0;
+  let hitByteBudget = false;
+  let cursor: string | null = null;
+  let exitReason:
+    | "limit"
+    | "max_pages"
+    | "no_new_tweets"
+    | "api_exhausted"
+    | "window_exhausted" = "api_exhausted";
+  let currentUntil = untilUnix;
+
+  while (true) {
+    if (collected.length >= input.limit) {
+      exitReason = "limit";
+      break;
+    }
+    if (pages >= MAX_PAGES) {
+      exitReason = "max_pages";
+      break;
+    }
+
+    const remaining = input.limit - collected.length;
+    const url = new URL(joinUrl(baseUrl ?? GETXAPI_DEFAULT_BASE_URL, "/twitter/tweet/advanced_search"));
+    url.searchParams.set("q", buildGetXAPIQuery(input));
+    url.searchParams.set("queryType", input.queryType);
+    url.searchParams.set("limit", String(Math.min(remaining, GETXAPI_MAX_LIMIT)));
+    if (sinceUnix !== null) url.searchParams.set("sinceTime", new Date(sinceUnix * 1000).toISOString());
+    url.searchParams.set("untilTime", new Date(currentUntil * 1000).toISOString());
+    if (cursor) url.searchParams.set("cursor", cursor);
+    if (input.lang) url.searchParams.set("language", input.lang);
+    if (input.minFaves !== undefined) url.searchParams.set("minFaves", String(input.minFaves));
+    if (!input.includeRetweets) url.searchParams.set("retweets", "exclude");
+    if (!input.includeQuotes) url.searchParams.set("quotes", "exclude");
+    if (!input.includeReplies) url.searchParams.set("replies", "exclude");
+
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        Accept: "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      const body = await response.text().catch(() => "");
+      throw new Error(
+        `GetXAPI returned ${response.status} ${response.statusText}${body ? `: ${body.slice(0, 500)}` : ""}`,
+      );
+    }
+
+    const data = (await response.json()) as {
+      tweets?: any[];
+      has_next_page?: boolean;
+      has_more?: boolean;
+      next_cursor?: string;
+      nextCursor?: string;
+    };
+
+    pages += 1;
+
+    let addedThisCall = 0;
+    let oldestMsThisCall = Infinity;
+    for (const t of data.tweets ?? []) {
+      if (seenIds.has(t.id)) continue;
+      seenIds.add(t.id);
+      collected.push(trimTweet(t));
+      addedThisCall += 1;
+      const ms = Date.parse(t.createdAt);
+      if (!Number.isNaN(ms) && ms < oldestMsThisCall) oldestMsThisCall = ms;
+      if (collected.length >= input.limit) break;
+    }
+
+    const nextCursor = data.next_cursor ?? data.nextCursor;
+    const hasNextPage = Boolean(data.has_next_page ?? data.has_more);
+
+    if (addedThisCall === 0) {
+      exitReason = "no_new_tweets";
+      break;
+    }
+    if (!hasNextPage) {
+      exitReason = "api_exhausted";
+      break;
+    }
+    if (nextCursor) {
+      cursor = nextCursor;
+    } else if (oldestMsThisCall !== Infinity) {
+      const newUntil = Math.floor(oldestMsThisCall / 1000) - 1;
+      if (sinceUnix !== null && newUntil <= sinceUnix) {
+        exitReason = "window_exhausted";
+        break;
+      }
+      currentUntil = newUntil;
+    } else {
+      exitReason = "api_exhausted";
+      break;
+    }
+
+    if (Buffer.byteLength(JSON.stringify(collected), "utf8") > BYTE_BUDGET) {
+      hitByteBudget = true;
+      break;
+    }
+  }
+
+  let fetchedTotal: number | undefined;
+  let byteSize: number | undefined;
+  if (hitByteBudget) {
+    fetchedTotal = collected.length;
+    const kept = largestPrefixUnderBudget(collected, BYTE_BUDGET);
+    collected = collected.slice(0, kept);
+    byteSize = Buffer.byteLength(JSON.stringify(collected), "utf8");
+  }
+
+  let stoppedReason: StoppedReason;
+  if (collected.length === 0) {
+    stoppedReason = "empty";
+  } else if (hitByteBudget) {
+    stoppedReason = "byte_budget";
+  } else if (exitReason === "limit") {
+    stoppedReason = "limit_reached";
+  } else if (exitReason === "max_pages") {
+    stoppedReason = "max_pages";
+  } else {
     stoppedReason = "api_exhausted";
   }
 
